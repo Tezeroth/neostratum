@@ -1,72 +1,656 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <!-- 
-      This is an HTML comment
-      You can write text in a comment and the content won't be visible in the page
-    -->
+<head>
+  <meta charset="utf-8">
+  <title>PhysX Pickup & Inspection Mode with Mobile Support</title>
+  
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/c-frame/physx@v0.1.2/dist/physx.min.js"></script>
 
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" href="https://glitch.com/favicon.ico" />
+  <style>
+    .permission-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+    }
 
-    <!--
-      This is the page head - it contains info the browser uses
-      Like the title, which appears on the browser tab but not inside the page
-      Further down you'll see the content that displays in the page
-    -->
-    <title>Hello World!</title>
+    .permission-content {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
 
-    <!-- The website stylesheet -->
-    <link rel="stylesheet" href="/style.css" />
+    .look-mode-btn {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      background: rgba(255, 255, 255, 0.3);
+      border: 2px solid rgba(255, 255, 255, 0.6);
+      color: white;
+      padding: 10px;
+      border-radius: 8px;
+      z-index: 9999;
+    }
 
-    <!-- The website JavaScript file -->
-    <script src="/script.js" defer></script>
-  </head>
-  <body>
-    <!--
-      The body includes the content you see in the page
-      Each element is defined using tags, like this <div></div>
-      The attributes like class="wrapper" let us style elements in the CSS
-    -->
-    <div class="wrapper">
-      <div class="content" role="main">
-        <h1 class="title">Hello World!</h1>
-        <img
-          src="https://cdn.glitch.com/a9975ea6-8949-4bab-addb-8a95021dc2da%2Fillustration.svg?v=1618177344016"
-          class="illustration"
-          alt="Editor illustration"
-          title="Click the image!"
-        />
-        <div class="instructions">
-          <h2>Using this project</h2>
-          <p>
-            This is the Glitch <strong>Hello Website</strong> project. You can
-            use it to build your own site. Check out the code in the editor and open
-            the <span class="fileopener" data-file="TODO.md" data-line="0"
-              >TODO</span> for next steps!
-          </p>
-          <!--  🚧 TODO: ADD BUTTON HERE -->
+    .look-mode-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
 
-          <!-- Once you've added the button from TODO.md, click it in the page -->
-          <!-- Check out the function in script.js to see how it works -->
-        </div>
-      </div>
-    </div>
-    <!-- The footer holds our remix button — you can keep or delete it ✂ -->
-    <footer class="footer">
-      <div class="links"></div>
-      <a
-        class="btn--remix"
-        target="_top"
-        href="https://glitch.com/edit/#!/remix/glitch-hello-website"
-      >
-        <img
-          src="https://cdn.glitch.com/605e2a51-d45f-4d87-a285-9410ad350515%2FLogo_Color.svg?v=1618199565140"
-          alt=""
-        />
-        Remix on Glitch
-      </a>
-    </footer>
-  </body>
+    #exitButton {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      padding: 10px 20px;
+      background-color: #ff4444;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      z-index: 9999;
+      opacity: 0.8;
+      transition: opacity 0.3s;
+    }
+
+    #exitButton:hover {
+      opacity: 1;
+    }
+
+    .arrow-controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 240px;
+      height: 150px;
+      z-index: 9999;
+      display: grid;
+      grid-template-areas:
+        ". . ."
+        "pickup up examine"
+        "left down right";
+      grid-template-rows: 1fr 45px 45px;
+      grid-template-columns: 45px 45px 45px;
+      gap: 15px 15px;
+    }
+
+    .arrow-btn, .action-btn {
+      width: 45px;
+      height: 45px;
+      border-radius: 8px;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      user-select: none;
+      text-align: center;
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .arrow-btn {
+      background-color: rgba(255, 255, 255, 0.3);
+      border: 2px solid rgba(255, 255, 255, 0.6);
+      font-size: 20px;
+    }
+
+    .action-btn {
+      background: linear-gradient(145deg, rgba(255,255,255,0.4), rgba(255,255,255,0.2));
+      border: 2px solid rgba(255,255,255,0.6);
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      transition: all 0.2s ease;
+    }
+
+    #pickupBtn { grid-area: pickup; }
+    #examineBtn { grid-area: examine; }
+    #upBtn { grid-area: up; }
+    #leftBtn { grid-area: left; }
+    #rightBtn { grid-area: right; }
+    #downBtn { grid-area: down; }
+
+    .arrow-btn:active {
+      background-color: rgba(255, 255, 255, 0.5);
+    }
+
+    .action-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      background: linear-gradient(145deg, rgba(255,255,255,0.5), rgba(255,255,255,0.3));
+    }
+
+    /* Show Controls only on Mobile */
+    @media (hover: none), (pointer: coarse) {
+      .arrow-controls {
+        display: grid !important;
+      }
+    }
+
+    /* Hide Controls on Desktop */
+    @media (hover: hover) and (pointer: fine) {
+      .arrow-controls {
+        display: none !important;
+      }
+    }
+  </style>
+
+  <script>
+    // Device Manager: Handles device detection, permissions, and capabilities
+    const DeviceManager = {
+      isVR: false,
+      isMobile: false,
+      hasGyro: false,
+      
+      async init() {
+        // VR check
+        if (navigator.xr) {
+          try {
+            this.isVR = await navigator.xr.isSessionSupported('immersive-vr');
+          } catch (e) {
+            this.isVR = false;
+          }
+        }
+        
+        // Mobile check
+        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                        (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+        
+        // Gyro check
+        this.hasGyro = window.DeviceOrientationEvent !== undefined;
+        
+        return true;
+      }
+    };
+
+    // Look Mode Manager: Handles switching between swipe and gyro modes
+    const LookModeManager = {
+      currentMode: 'swipe',
+      gyroEnabled: false,
+      
+      init() {
+        this.currentMode = localStorage.getItem('lookMode') || 'swipe';
+        this.createToggleButton();
+        
+        if (DeviceManager.hasGyro) {
+          this.initGyro();
+        }
+      },
+
+      createToggleButton() {
+        const button = document.createElement('button');
+        button.className = 'look-mode-btn';
+        this.updateButtonText(button);
+        
+        button.addEventListener('click', async () => {
+          if (this.currentMode === 'swipe') {
+            if (await DeviceManager.requestGyroPermission()) {
+              this.setMode('gyro');
+            } else {
+              this.showPermissionDenied();
+            }
+          } else {
+            this.setMode('swipe');
+          }
+        });
+        
+        document.body.appendChild(button);
+      },
+
+      updateButtonText(button) {
+        button.innerHTML = `${this.currentMode.toUpperCase()} MODE ${DeviceManager.hasGyro ? '⟷' : ''}`;
+        button.disabled = !DeviceManager.hasGyro;
+      },
+
+      setMode(mode) {
+        this.currentMode = mode;
+        localStorage.setItem('lookMode', mode);
+        this.updateButtonText(document.querySelector('.look-mode-btn'));
+        
+        if (mode === 'gyro') {
+          this.enableGyro();
+        } else {
+          this.disableGyro();
+        }
+      },
+
+      showPermissionDenied() {
+        const overlay = document.createElement('div');
+        overlay.className = 'permission-overlay';
+        overlay.innerHTML = `
+          <div class="permission-content">
+            <h2>Gyroscope Permission Required</h2>
+            <p>Please enable device orientation access to use gyroscope controls.</p>
+            <button>OK</button>
+          </div>
+        `;
+        
+        overlay.querySelector('button').onclick = () => {
+          overlay.remove();
+        };
+        
+        document.body.appendChild(overlay);
+      },
+
+      initGyro() {
+        window.addEventListener('deviceorientation', this.handleGyro.bind(this), false);
+      },
+
+      handleGyro(event) {
+        if (!this.gyroEnabled || this.currentMode !== 'gyro') return;
+        
+        const camera = document.querySelector('#camera');
+        if (!camera) return;
+
+        const lookControls = camera.components['look-controls'];
+        if (lookControls) {
+          lookControls.pitchObject.rotation.x = THREE.MathUtils.degToRad(event.beta);
+          lookControls.yawObject.rotation.y = THREE.MathUtils.degToRad(-event.gamma);
+          lookControls.updateRotation();
+        }
+      },
+
+      enableGyro() {
+        this.gyroEnabled = true;
+      },
+
+      disableGyro() {
+        this.gyroEnabled = false;
+      }
+    };
+
+    // Main Control Component: Handles desktop and mobile interactions
+    AFRAME.registerComponent('desktop-and-mobile-controls', {
+      init: function () {
+        this.camera = document.querySelector('#camera');
+        this.heldObject = null;
+        this.inspectionMode = false;
+        this.prevMouseX = 0;
+        this.prevMouseY = 0;
+        
+        this.onClick = this.onClick.bind(this);
+        this.onKeyPress = this.onKeyPress.bind(this);
+        this.onMouseMove = this.onMouseMove.bind(this);
+        this.onTouchMove = this.onTouchMove.bind(this);
+        this.onTouchStart = this.onTouchStart.bind(this);
+
+        window.addEventListener('click', this.onClick);
+        window.addEventListener('touchend', this.onClick);
+        window.addEventListener('keydown', this.onKeyPress);
+        window.addEventListener('mousemove', this.onMouseMove);
+        window.addEventListener('touchmove', this.onTouchMove);
+        window.addEventListener('touchstart', this.onTouchStart);
+      },
+
+      remove: function () {
+        window.removeEventListener('click', this.onClick);
+        window.removeEventListener('touchend', this.onClick);
+        window.removeEventListener('keydown', this.onKeyPress);
+        window.removeEventListener('mousemove', this.onMouseMove);
+        window.removeEventListener('touchmove', this.onTouchMove);
+        window.removeEventListener('touchstart', this.onTouchStart);
+      },
+
+      onClick: function (evt) {
+        if (evt.target.classList.contains('arrow-btn') || evt.target.classList.contains('arrow-controls')) {
+          return;
+        }
+
+        if (this.inspectionMode) return;
+
+        const cursor = document.querySelector('#cursor');
+        const intersection = cursor.components.raycaster.intersections[0];
+
+        if (!intersection) return;
+
+        const clickedEl = intersection.object.el;
+        if (!clickedEl.classList.contains('pickupable')) return;
+
+        if (this.heldObject) {
+          this.dropObject();
+        } else {
+          this.pickupObject(clickedEl);
+        }
+      },
+
+      pickupObject: function (el) {
+        if (this.heldObject) return; // Prevent multiple pickups
+        
+        this.heldObject = el;
+        const position = el.object3D.position.clone();
+        const quaternion = el.object3D.quaternion.clone();
+        
+        // Remove and reapply physics to ensure clean state
+        el.removeAttribute('physx-body');
+        requestAnimationFrame(() => {
+          el.setAttribute('physx-body', 'type: kinematic');
+          el.object3D.position.copy(position);
+          el.object3D.quaternion.copy(quaternion);
+          el.object3D.updateMatrix();
+          
+          // Start tick after physics is reapplied
+          this.el.sceneEl.addEventListener('tick', this.tick.bind(this));
+        });
+      },
+
+      dropObject: function () {
+        if (!this.heldObject) return;
+
+        const el = this.heldObject;
+        const position = el.object3D.position.clone();
+        const quaternion = el.object3D.quaternion.clone();
+        
+        // Ensure we're out of inspection mode
+        this.inspectionMode = false;
+        
+        // Re-enable controls explicitly
+        this.camera.setAttribute('look-controls', {
+          enabled: true,
+          pointerLockEnabled: !DeviceManager.isMobile
+        });
+        this.camera.setAttribute('wasd-controls', 'enabled', true);
+        
+        // Clear references first
+        this.el.sceneEl.removeEventListener('tick', this.tick.bind(this));
+        this.heldObject = null;
+
+        // Remove and reapply physics to ensure clean state
+        el.removeAttribute('physx-body');
+        requestAnimationFrame(() => {
+          el.setAttribute('physx-body', {
+            type: 'dynamic',
+            mass: 1
+          });
+          el.object3D.position.copy(position);
+          el.object3D.quaternion.copy(quaternion);
+          el.object3D.updateMatrix();
+        });
+      },
+
+      tick: function () {
+        if (!this.heldObject || this.inspectionMode) return;
+
+        const camera = this.camera;
+        const position = new THREE.Vector3();
+        const direction = new THREE.Vector3(0, 0, -1);
+        const quaternion = new THREE.Quaternion();
+        
+        camera.object3D.getWorldPosition(position);
+        camera.object3D.getWorldQuaternion(quaternion);
+        direction.applyQuaternion(quaternion);
+        
+        const targetPosition = position.clone().add(direction.multiplyScalar(2));
+        
+        this.heldObject.object3D.position.copy(targetPosition);
+        this.heldObject.object3D.quaternion.copy(quaternion);
+        this.heldObject.object3D.rotateY(Math.PI);
+        this.heldObject.object3D.updateMatrix();
+      },
+
+      onKeyPress: function (evt) {
+        if (evt.code === 'Space' && this.heldObject) {
+          this.toggleInspectionMode();
+        }
+      },
+
+      onTouchStart: function (evt) {
+        if (evt.touches.length === 2 && this.heldObject) {
+          this.toggleInspectionMode();
+        }
+        this.prevMouseX = evt.touches[0].clientX;
+        this.prevMouseY = evt.touches[0].clientY;
+      },
+
+      toggleInspectionMode: function () {
+        if (!this.heldObject) return;
+        
+        this.inspectionMode = !this.inspectionMode;
+        const el = this.heldObject;
+        const position = el.object3D.position.clone();
+        const quaternion = el.object3D.quaternion.clone();
+        
+        if (this.inspectionMode) {
+          this.camera.setAttribute('look-controls', 'enabled', false);
+          this.camera.setAttribute('wasd-controls', 'enabled', false);
+          
+          // Ensure object stays kinematic in inspection mode
+          el.removeAttribute('physx-body');
+          requestAnimationFrame(() => {
+            el.setAttribute('physx-body', 'type: kinematic');
+            el.object3D.position.copy(position);
+            el.object3D.quaternion.copy(quaternion);
+            el.object3D.updateMatrix();
+          });
+        } else {
+          // Exit inspection mode
+          if (!DeviceManager.isMobile) {
+            document.body.requestPointerLock();
+          }
+          
+          // Re-enable controls
+          this.camera.setAttribute('look-controls', {
+            enabled: true,
+            pointerLockEnabled: !DeviceManager.isMobile
+          });
+          this.camera.setAttribute('wasd-controls', 'enabled', true);
+
+          // Maintain kinematic state when exiting inspection
+          el.removeAttribute('physx-body');
+          requestAnimationFrame(() => {
+            el.setAttribute('physx-body', 'type: kinematic');
+            el.object3D.position.copy(position);
+            el.object3D.quaternion.copy(quaternion);
+            el.object3D.updateMatrix();
+          });
+        }
+      },
+
+      onMouseMove: function (evt) {
+        if (!this.inspectionMode || !this.heldObject) return;
+
+        const deltaX = evt.movementX * 0.005;
+        const deltaY = evt.movementY * 0.005;
+
+        this.heldObject.object3D.rotateY(-deltaX);
+        this.heldObject.object3D.rotateX(deltaY);
+      },
+
+      onTouchMove: function (evt) {
+        if (!this.inspectionMode || !this.heldObject || evt.touches.length !== 1) return;
+
+        const touch = evt.touches[0];
+        const deltaX = (touch.clientX - this.prevMouseX) * 0.005;
+        const deltaY = (touch.clientY - this.prevMouseY) * 0.005;
+
+        const threshold = 0.001;
+        const absX = Math.abs(deltaX);
+        const absY = Math.abs(deltaY);
+
+        const camera = document.querySelector('#camera');
+        const cameraQuaternion = new THREE.Quaternion();
+        camera.object3D.getWorldQuaternion(cameraQuaternion);
+
+        if (absX > threshold && absX > absY * 2) {
+            const yAxis = new THREE.Vector3(0, 1, 0);
+            const rotation = new THREE.Quaternion().setFromAxisAngle(yAxis, -deltaX);
+            this.heldObject.object3D.quaternion.multiply(rotation);
+        } else if (absY > threshold && absY > absX * 2) {
+            const xAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(cameraQuaternion);
+            const rotation = new THREE.Quaternion().setFromAxisAngle(xAxis, deltaY);
+            this.heldObject.object3D.quaternion.multiply(rotation);
+        }
+
+        this.heldObject.object3D.updateMatrix();
+        
+        this.prevMouseX = touch.clientX;
+        this.prevMouseY = touch.clientY;
+      }
+    });
+
+    // Arrow Controls Component
+    AFRAME.registerComponent('arrow-controls', {
+      init: function() {
+        this.moveState = {
+          up: false,
+          down: false,
+          left: false,
+          right: false
+        };
+
+        const arrowControls = document.createElement('div');
+        arrowControls.className = 'arrow-controls';
+
+        const buttons = {
+          up: '↑',
+          left: '←',
+          right: '→',
+          down: '↓'
+        };
+
+        const actionButtons = {
+          pickup: 'PICKUP/DROP',
+          examine: 'EXAMINE'
+        };
+
+        Object.entries(buttons).forEach(([direction, symbol]) => {
+          const btn = document.createElement('button');
+          btn.className = 'arrow-btn';
+          btn.id = `${direction}Btn`;
+          btn.innerHTML = symbol;
+          
+          ['mousedown', 'touchstart'].forEach(eventType => {
+            btn.addEventListener(eventType, (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              this.startMovement(direction);
+            });
+          });
+
+          ['mouseup', 'mouseleave', 'touchend'].forEach(eventType => {
+            btn.addEventListener(eventType, (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              this.stopMovement(direction);
+            });
+          });
+
+          arrowControls.appendChild(btn);
+        });
+
+        Object.entries(actionButtons).forEach(([action, label]) => {
+          const btn = document.createElement('button');
+          btn.className = 'action-btn';
+          btn.id = `${action}Btn`;
+          btn.innerHTML = label;
+          
+          ['click', 'touchend'].forEach(eventType => {
+            btn.addEventListener(eventType, (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              
+              const scene = document.querySelector('a-scene');
+              const controls = scene.components['desktop-and-mobile-controls'];
+              if (!controls) return;
+              
+              if (action === 'pickup') {
+                const cursor = document.querySelector('#cursor');
+                const intersection = cursor.components.raycaster.intersections[0];
+
+                if (intersection) {
+                  const clickedEl = intersection.object.el;
+                  if (clickedEl.classList.contains('pickupable')) {
+                    if (controls.heldObject) {
+                      controls.dropObject();
+                    } else {
+                      controls.pickupObject(clickedEl);
+                    }
+                  }
+                }
+              } else if (action === 'examine') {
+                if (controls.heldObject) {
+                  controls.toggleInspectionMode();
+                }
+              }
+            });
+          });
+
+          arrowControls.appendChild(btn);
+        });
+
+        document.body.appendChild(arrowControls);
+
+        this.tick = this.tick.bind(this);
+      },
+
+      startMovement: function(direction) {
+        this.moveState[direction] = true;
+      },
+
+      stopMovement: function(direction) {
+        this.moveState[direction] = false;
+      },
+
+      tick: function() {
+        if (!this.moveState) return;
+        
+        const camera = document.querySelector('#camera');
+        if (!camera) return;
+        
+        const rotation = camera.object3D.rotation.y;
+        const moveSpeed = 0.15;
+
+        if (this.moveState.up) {
+          camera.object3D.position.x -= Math.sin(rotation) * moveSpeed;
+          camera.object3D.position.z -= Math.cos(rotation) * moveSpeed;
+        }
+        if (this.moveState.down) {
+          camera.object3D.position.x += Math.sin(rotation) * moveSpeed;
+          camera.object3D.position.z += Math.cos(rotation) * moveSpeed;
+        }
+        if (this.moveState.left) {
+          camera.object3D.position.x -= Math.cos(rotation) * moveSpeed;
+          camera.object3D.position.z += Math.sin(rotation) * moveSpeed;
+        }
+        if (this.moveState.right) {
+          camera.object3D.position.x += Math.cos(rotation) * moveSpeed;
+          camera.object3D.position.z -= Math.sin(rotation) * moveSpeed;
+        }
+      }
+    });
+  </script>
+</head>
+<body>
+  <a-scene desktop-and-mobile-controls arrow-controls physx="autoLoad: true; useDefaultScene: false;">
+    
+    <a href="https://placeholder-exit-url.com" id="exitButton">EXIT</a>
+    
+    <a-entity position="0 1.6 0">
+      <a-camera id="camera" look-controls="pointerLockEnabled: true;" wasd-controls>
+        <a-entity id="cursor" position="0 0 -1" geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03" material="color: lime" raycaster="objects: .pickupable; far: 20"></a-entity>
+      </a-camera>
+    </a-entity>
+
+    <a-plane position="0 0 0" rotation="-90 0 0" width="20" height="20" color="#444" physx-body="type: static"></a-plane>
+    <a-box class="pickupable" position="0 0.5 -3" width="0.5" height="0.5" depth="0.5" color="orange" physx-body="type: dynamic; mass: 1"></a-box>
+    <a-sphere class="pickupable" position="-2 0.5 -3" radius="0.25" color="blue" physx-body="type: dynamic; mass: 1"></a-sphere>
+    <a-cylinder class="pickupable" position="2 0.5 -3" radius="0.25" height="0.5" color="green" physx-body="type: dynamic; mass: 1"></a-cylinder>
+
+    <a-entity light="type: ambient; intensity: 0.5"></a-entity>
+    <a-entity light="type: directional; intensity: 0.5" position="-1 1 0"></a-entity>
+    <a-sky color="#ECECEC"></a-sky>
+  </a-scene>
+</body>
 </html>
