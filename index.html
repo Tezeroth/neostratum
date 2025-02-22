@@ -30,14 +30,21 @@
 
     .look-mode-btn {
       position: fixed;
-      right: 20px;
+      left: 20px;
       bottom: 20px;
+      width: 40px;
+      height: 40px;
       background: rgba(255, 255, 255, 0.3);
       border: 2px solid rgba(255, 255, 255, 0.6);
       color: white;
-      padding: 10px;
-      border-radius: 8px;
+      border-radius: 50%;
       z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0;
     }
 
     .look-mode-btn:disabled {
@@ -48,14 +55,14 @@
     #exitButton {
       position: fixed;
       bottom: 20px;
-      left: 20px;
-      padding: 10px 20px;
+      left: 70px;
+      padding: 8px 16px;
       background-color: #ff4444;
       color: white;
       border: none;
       border-radius: 5px;
       cursor: pointer;
-      font-size: 16px;
+      font-size: 14px;
       z-index: 9999;
       opacity: 0.8;
       transition: opacity 0.3s;
@@ -223,7 +230,8 @@
       },
 
       updateButtonText(button) {
-        button.innerHTML = `${this.currentMode.toUpperCase()} MODE ${DeviceManager.hasGyro ? '⟷' : ''}`;
+        button.innerHTML = this.currentMode === 'swipe' ? '⇄' : '⟲';
+        button.title = `${this.currentMode.toUpperCase()} MODE${DeviceManager.hasGyro ? ' (tap to switch)' : ''}`;
         button.disabled = !DeviceManager.hasGyro;
       },
 
@@ -324,6 +332,11 @@
       },
 
       onClick: function (evt) {
+        if (DeviceManager.isMobile) {
+          // On mobile, only allow button interactions
+          return;
+        }
+
         if (evt.target.classList.contains('arrow-btn') || evt.target.classList.contains('arrow-controls')) {
           return;
         }
@@ -504,22 +517,21 @@
       },
 
       onTouchEnd: function (evt) {
-        if (evt.target.classList.contains('action-btn')) {
-          return; // Let the button handle its own events
+        if (DeviceManager.isMobile) {
+          // On mobile, only allow button interactions
+          return;
         }
 
-        // Only handle taps if we haven't been swiping
+        // Original touch handling for non-mobile devices
         if (!this.isSwiping) {
           const currentTime = Date.now();
           const tapLength = currentTime - this.lastTapTime;
           
           if (tapLength < 500 && tapLength > 0) {
-            // Double tap detected - drop object
             if (this.heldObject && !this.inspectionMode) {
               this.dropObject();
             }
           } else if (!this.heldObject) {
-            // Single tap - attempt pickup
             const cursor = document.querySelector('#cursor');
             const intersection = cursor.components.raycaster.intersections[0];
 
