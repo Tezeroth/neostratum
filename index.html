@@ -358,6 +358,11 @@
         // Ensure we're out of inspection mode
         this.inspectionMode = false;
         
+        // Update cursor color back to normal
+        if (this.cursor) {
+          this.cursor.setAttribute('material', 'color', 'lime');
+        }
+        
         // Re-enable controls explicitly
         this.camera.setAttribute('look-controls', {
           enabled: true,
@@ -396,10 +401,13 @@
         
         const targetPosition = position.clone().add(direction.multiplyScalar(2));
         
-        this.heldObject.object3D.position.copy(targetPosition);
-        this.heldObject.object3D.quaternion.copy(quaternion);
-        this.heldObject.object3D.rotateY(Math.PI);
-        this.heldObject.object3D.updateMatrix();
+        // Only update if position has actually changed
+        if (!this.heldObject.object3D.position.equals(targetPosition)) {
+          this.heldObject.object3D.position.copy(targetPosition);
+          this.heldObject.object3D.quaternion.copy(quaternion);
+          this.heldObject.object3D.rotateY(Math.PI);
+          this.heldObject.object3D.updateMatrix();
+        }
       },
 
       onKeyPress: function (evt) {
@@ -498,19 +506,23 @@
         }
 
         const el = this.heldObject;
-        const position = el.object3D.position.clone();
-        const quaternion = el.object3D.quaternion.clone();
         
         if (this.inspectionMode) {
+          // Store current transform for inspection mode
+          this._savedPosition = el.object3D.position.clone();
+          this._savedQuaternion = el.object3D.quaternion.clone();
+          
+          // Disable physics during inspection
+          el.removeAttribute('physx-body');
+          
+          // Disable controls
           this.camera.setAttribute('look-controls', 'enabled', false);
           this.camera.setAttribute('wasd-controls', 'enabled', false);
           
-          // Ensure object stays kinematic in inspection mode
-          el.removeAttribute('physx-body');
+          // Ensure object maintains position
           requestAnimationFrame(() => {
-            el.setAttribute('physx-body', 'type: kinematic');
-            el.object3D.position.copy(position);
-            el.object3D.quaternion.copy(quaternion);
+            el.object3D.position.copy(this._savedPosition);
+            el.object3D.quaternion.copy(this._savedQuaternion);
             el.object3D.updateMatrix();
           });
         } else {
@@ -526,12 +538,11 @@
           });
           this.camera.setAttribute('wasd-controls', 'enabled', true);
 
-          // Maintain kinematic state when exiting inspection
-          el.removeAttribute('physx-body');
+          // Restore physics and position
           requestAnimationFrame(() => {
             el.setAttribute('physx-body', 'type: kinematic');
-            el.object3D.position.copy(position);
-            el.object3D.quaternion.copy(quaternion);
+            el.object3D.position.copy(this._savedPosition);
+            el.object3D.quaternion.copy(this._savedQuaternion);
             el.object3D.updateMatrix();
           });
         }
