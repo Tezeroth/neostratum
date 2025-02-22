@@ -280,6 +280,8 @@
         this.inspectionMode = false;
         this.prevMouseX = 0;
         this.prevMouseY = 0;
+        this.lastTapTime = 0;  // For double tap detection
+        this.cursor = document.querySelector('#cursor');
         
         this.onClick = this.onClick.bind(this);
         this.onKeyPress = this.onKeyPress.bind(this);
@@ -288,7 +290,7 @@
         this.onTouchStart = this.onTouchStart.bind(this);
 
         window.addEventListener('click', this.onClick);
-        window.addEventListener('touchend', this.onClick);
+        window.addEventListener('touchend', this.onTouchEnd.bind(this));
         window.addEventListener('keydown', this.onKeyPress);
         window.addEventListener('mousemove', this.onMouseMove);
         window.addEventListener('touchmove', this.onTouchMove);
@@ -414,10 +416,39 @@
         this.prevMouseY = evt.touches[0].clientY;
       },
 
+      onTouchEnd: function (evt) {
+        if (evt.target.classList.contains('action-btn')) {
+          return; // Let the button handle its own events
+        }
+
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - this.lastTapTime;
+        
+        if (tapLength < 500 && tapLength > 0) {
+          // Double tap detected
+          if (this.heldObject && !this.inspectionMode) {
+            this.dropObject();
+          }
+        }
+        
+        this.lastTapTime = currentTime;
+
+        // Single tap for pickup
+        if (tapLength > 500 && !this.heldObject) {
+          this.onClick(evt);
+        }
+      },
+
       toggleInspectionMode: function () {
         if (!this.heldObject) return;
         
         this.inspectionMode = !this.inspectionMode;
+        
+        // Update cursor color
+        if (this.cursor) {
+          this.cursor.setAttribute('material', 'color', this.inspectionMode ? 'red' : 'lime');
+        }
+
         const el = this.heldObject;
         const position = el.object3D.position.clone();
         const quaternion = el.object3D.quaternion.clone();
