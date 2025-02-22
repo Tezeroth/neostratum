@@ -416,6 +416,48 @@
         this.prevMouseY = evt.touches[0].clientY;
       },
 
+      onTouchMove: function (evt) {
+        if (evt.touches.length !== 1) return;
+        
+        const touch = evt.touches[0];
+        const deltaX = (touch.clientX - this.prevMouseX) * 0.005;
+        const deltaY = (touch.clientY - this.prevMouseY) * 0.005;
+
+        if (this.inspectionMode && this.heldObject) {
+          // Existing inspection mode rotation logic
+          const threshold = 0.001;
+          const absX = Math.abs(deltaX);
+          const absY = Math.abs(deltaY);
+
+          const camera = document.querySelector('#camera');
+          const cameraQuaternion = new THREE.Quaternion();
+          camera.object3D.getWorldQuaternion(cameraQuaternion);
+
+          if (absX > threshold && absX > absY * 2) {
+              const yAxis = new THREE.Vector3(0, 1, 0);
+              const rotation = new THREE.Quaternion().setFromAxisAngle(yAxis, -deltaX);
+              this.heldObject.object3D.quaternion.multiply(rotation);
+          } else if (absY > threshold && absY > absX * 2) {
+              const xAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(cameraQuaternion);
+              const rotation = new THREE.Quaternion().setFromAxisAngle(xAxis, deltaY);
+              this.heldObject.object3D.quaternion.multiply(rotation);
+          }
+          this.heldObject.object3D.updateMatrix();
+        } else {
+          // Camera look controls when not in inspection mode
+          const lookControls = this.camera.components['look-controls'];
+          if (lookControls) {
+            lookControls.yawObject.rotation.y -= deltaX;
+            lookControls.pitchObject.rotation.x -= deltaY;
+            // Clamp the pitch rotation to prevent over-rotation
+            lookControls.pitchObject.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, lookControls.pitchObject.rotation.x));
+          }
+        }
+        
+        this.prevMouseX = touch.clientX;
+        this.prevMouseY = touch.clientY;
+      },
+
       onTouchEnd: function (evt) {
         if (evt.target.classList.contains('action-btn')) {
           return; // Let the button handle its own events
@@ -425,18 +467,24 @@
         const tapLength = currentTime - this.lastTapTime;
         
         if (tapLength < 500 && tapLength > 0) {
-          // Double tap detected
-          if (this.heldObject && !this.inspectionMode) {
+          // Double tap detected - drop object
+          if (this.heldObject) {
             this.dropObject();
+          }
+        } else {
+          // Single tap - attempt pickup if cursor intersects object
+          const cursor = document.querySelector('#cursor');
+          const intersection = cursor.components.raycaster.intersections[0];
+
+          if (intersection && !this.heldObject) {
+            const clickedEl = intersection.object.el;
+            if (clickedEl.classList.contains('pickupable')) {
+              this.pickupObject(clickedEl);
+            }
           }
         }
         
         this.lastTapTime = currentTime;
-
-        // Single tap for pickup
-        if (tapLength > 500 && !this.heldObject) {
-          this.onClick(evt);
-        }
       },
 
       toggleInspectionMode: function () {
@@ -497,37 +545,6 @@
 
         this.heldObject.object3D.rotateY(-deltaX);
         this.heldObject.object3D.rotateX(deltaY);
-      },
-
-      onTouchMove: function (evt) {
-        if (!this.inspectionMode || !this.heldObject || evt.touches.length !== 1) return;
-
-        const touch = evt.touches[0];
-        const deltaX = (touch.clientX - this.prevMouseX) * 0.005;
-        const deltaY = (touch.clientY - this.prevMouseY) * 0.005;
-
-        const threshold = 0.001;
-        const absX = Math.abs(deltaX);
-        const absY = Math.abs(deltaY);
-
-        const camera = document.querySelector('#camera');
-        const cameraQuaternion = new THREE.Quaternion();
-        camera.object3D.getWorldQuaternion(cameraQuaternion);
-
-        if (absX > threshold && absX > absY * 2) {
-            const yAxis = new THREE.Vector3(0, 1, 0);
-            const rotation = new THREE.Quaternion().setFromAxisAngle(yAxis, -deltaX);
-            this.heldObject.object3D.quaternion.multiply(rotation);
-        } else if (absY > threshold && absY > absX * 2) {
-            const xAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(cameraQuaternion);
-            const rotation = new THREE.Quaternion().setFromAxisAngle(xAxis, deltaY);
-            this.heldObject.object3D.quaternion.multiply(rotation);
-        }
-
-        this.heldObject.object3D.updateMatrix();
-        
-        this.prevMouseX = touch.clientX;
-        this.prevMouseY = touch.clientY;
       }
     });
 
@@ -664,39 +681,45 @@
   </script>
 </head>
 <body>
-<a-scene desktop-and-mobile-controls arrow-controls physx="autoLoad: true; useDefaultScene: false;">
-  <assets>
-    <img id="skybox1" crossorigin="anonymous" src="Assets/skybox1.png" alt="Skybox background texture">
-    <img id="brickwall" crossorigin="anonymous" src="../Assets/brick.jpg" alt="Brickwall texture">
-  </assets>
+  <a-scene desktop-and-mobile-controls arrow-controls physx="autoLoad: true; useDefaultScene: false;">
 
-  <a href="https://placeholder-exit-url.com" id="exitButton">EXIT</a>
+    <assets>
+    <img id="skybox1" crossorigin="anonymous" src="skybox1.png" alt="Skybox background texture">
+    <img id="brickwall" crossorigin="anonymous" src="brick.jpg" alt="Brickwall texture">
+    </assets>
 
-  <a-entity position="0 1.6 0">
-    <a-camera id="camera" look-controls="pointerLockEnabled: true;" wasd-controls>
-      <a-entity id="cursor" position="0 0 -1" geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03" material="color: lime" raycaster="objects: .pickupable; far: 20"></a-entity>
-    </a-camera>
-  </a-entity>
 
-  <a-plane position="0 0 0" 
-           rotation="-90 0 0" 
-           width="20" 
-           height="20" 
-           material="src: #brickwall; repeat: 5 5"
-           physx-body="type: static">
-  </a-plane>
-  <a-box class="pickupable" position="0 0.5 -3" width="0.5" height="0.5" depth="0.5" color="orange" physx-body="type: dynamic; mass: 1"></a-box>
-  <a-sphere class="pickupable" position="-2 0.5 -3" radius="0.25" color="blue" physx-body="type: dynamic; mass: 1"></a-sphere>
-  <a-cylinder class="pickupable" position="2 0.5 -3" radius="0.25" height="0.5" color="green" physx-body="type: dynamic; mass: 1"></a-cylinder>
+    <a href="https://placeholder-exit-url.com" id="exitButton">EXIT</a>
+    
+    <a-entity position="0 1.6 0">
+      <a-camera id="camera" look-controls="pointerLockEnabled: true;" wasd-controls>
+        <a-entity id="cursor" position="0 0 -1" geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03" material="color: lime" raycaster="objects: .pickupable; far: 20"></a-entity>
+      </a-camera>
+    </a-entity>
 
-  <a-entity light="type: ambient; intensity: 0.5"></a-entity>
-  <a-entity light="type: directional; intensity: 0.5" position="-1 1 0"></a-entity>
+    <a-plane position="0 0 0" 
+             rotation="-90 0 0" 
+             width="20" 
+             height="20" 
+             color="white"
+             physx-body="type: static">
+    </a-plane>
+    <a-box class="pickupable" position="0 0.5 -3" width="0.5" height="0.5" depth="0.5" color="orange" physx-body="type: dynamic; mass: 1"></a-box>
+    <a-sphere class="pickupable" position="-2 0.5 -3" radius="0.25" color="blue" physx-body="type: dynamic; mass: 1"></a-sphere>
+    <a-cylinder class="pickupable" position="2 0.5 -3" radius="0.25" height="0.5" color="green" physx-body="type: dynamic; mass: 1"></a-cylinder>
 
-  <a-sky
+    <a-entity light="type: ambient; intensity: 0.5"></a-entity>
+    <a-entity light="type: directional; intensity: 0.5" position="-1 1 0"></a-entity>
+
+    <a-sky
     src="#skybox1"
     geometry="primitive: sphere; radius: 492.72; segmentsWidth: 12; segmentsHeight: 12"
     scale="0.7 0.4 1">
-  </a-sky>
-</a-scene>
-  </body>
+</a-sky>
+
+
+
+
+  </a-scene>
+</body>
 </html>
