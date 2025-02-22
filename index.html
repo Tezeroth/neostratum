@@ -173,6 +173,18 @@
         this.hasGyro = window.DeviceOrientationEvent !== undefined;
         
         return true;
+      },
+
+      async requestGyroPermission() {
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+          try {
+            const permission = await DeviceOrientationEvent.requestPermission();
+            return permission === 'granted';
+          } catch (error) {
+            return false;
+          }
+        }
+        return true;
       }
     };
 
@@ -295,6 +307,11 @@
         window.addEventListener('mousemove', this.onMouseMove);
         window.addEventListener('touchmove', this.onTouchMove);
         window.addEventListener('touchstart', this.onTouchStart);
+
+        this.touchStartX = 0;
+        this.touchStartY = 0;
+        this.touchStartTime = 0;
+        this.isSwiping = false;
       },
 
       remove: function () {
@@ -419,7 +436,18 @@
       onTouchStart: function (evt) {
         if (evt.touches.length === 2 && this.heldObject) {
           this.toggleInspectionMode();
+          return;
         }
+
+        if (evt.target.classList.contains('arrow-btn') || evt.target.classList.contains('action-btn')) {
+          return;
+        }
+
+        this.touchStartX = evt.touches[0].clientX;
+        this.touchStartY = evt.touches[0].clientY;
+        this.touchStartTime = Date.now();
+        this.isSwiping = false;
+        
         this.prevMouseX = evt.touches[0].clientX;
         this.prevMouseY = evt.touches[0].clientY;
       },
@@ -428,37 +456,46 @@
         if (evt.touches.length !== 1) return;
         
         const touch = evt.touches[0];
-        const deltaX = (touch.clientX - this.prevMouseX) * 0.005;
-        const deltaY = (touch.clientY - this.prevMouseY) * 0.005;
+        const deltaX = touch.clientX - this.touchStartX;
+        const deltaY = touch.clientY - this.touchStartY;
+        
+        // If movement is more than 10px, consider it a swipe
+        if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+          this.isSwiping = true;
+        }
 
-        if (this.inspectionMode && this.heldObject) {
-          // Existing inspection mode rotation logic
-          const threshold = 0.001;
-          const absX = Math.abs(deltaX);
-          const absY = Math.abs(deltaY);
+        if (this.isSwiping) {
+          const moveDeltaX = (touch.clientX - this.prevMouseX) * 0.005;
+          const moveDeltaY = (touch.clientY - this.prevMouseY) * 0.005;
 
-          const camera = document.querySelector('#camera');
-          const cameraQuaternion = new THREE.Quaternion();
-          camera.object3D.getWorldQuaternion(cameraQuaternion);
+          if (this.inspectionMode && this.heldObject) {
+            // Existing inspection mode rotation logic
+            const threshold = 0.001;
+            const absX = Math.abs(moveDeltaX);
+            const absY = Math.abs(moveDeltaY);
 
-          if (absX > threshold && absX > absY * 2) {
-              const yAxis = new THREE.Vector3(0, 1, 0);
-              const rotation = new THREE.Quaternion().setFromAxisAngle(yAxis, -deltaX);
-              this.heldObject.object3D.quaternion.multiply(rotation);
-          } else if (absY > threshold && absY > absX * 2) {
-              const xAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(cameraQuaternion);
-              const rotation = new THREE.Quaternion().setFromAxisAngle(xAxis, deltaY);
-              this.heldObject.object3D.quaternion.multiply(rotation);
-          }
-          this.heldObject.object3D.updateMatrix();
-        } else {
-          // Camera look controls when not in inspection mode
-          const lookControls = this.camera.components['look-controls'];
-          if (lookControls) {
-            lookControls.yawObject.rotation.y -= deltaX;
-            lookControls.pitchObject.rotation.x -= deltaY;
-            // Clamp the pitch rotation to prevent over-rotation
-            lookControls.pitchObject.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, lookControls.pitchObject.rotation.x));
+            const camera = document.querySelector('#camera');
+            const cameraQuaternion = new THREE.Quaternion();
+            camera.object3D.getWorldQuaternion(cameraQuaternion);
+
+            if (absX > threshold && absX > absY * 2) {
+                const yAxis = new THREE.Vector3(0, 1, 0);
+                const rotation = new THREE.Quaternion().setFromAxisAngle(yAxis, -moveDeltaX);
+                this.heldObject.object3D.quaternion.multiply(rotation);
+            } else if (absY > threshold && absY > absX * 2) {
+                const xAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(cameraQuaternion);
+                const rotation = new THREE.Quaternion().setFromAxisAngle(xAxis, moveDeltaY);
+                this.heldObject.object3D.quaternion.multiply(rotation);
+            }
+            this.heldObject.object3D.updateMatrix();
+          } else {
+            // Camera look controls when not in inspection mode
+            const lookControls = this.camera.components['look-controls'];
+            if (lookControls) {
+              lookControls.yawObject.rotation.y -= moveDeltaX;
+              lookControls.pitchObject.rotation.x -= moveDeltaY;
+              lookControls.pitchObject.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, lookControls.pitchObject.rotation.x));
+            }
           }
         }
         
@@ -471,28 +508,33 @@
           return; // Let the button handle its own events
         }
 
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - this.lastTapTime;
-        
-        if (tapLength < 500 && tapLength > 0) {
-          // Double tap detected - drop object
-          if (this.heldObject) {
-            this.dropObject();
-          }
-        } else {
-          // Single tap - attempt pickup if cursor intersects object
-          const cursor = document.querySelector('#cursor');
-          const intersection = cursor.components.raycaster.intersections[0];
+        // Only handle taps if we haven't been swiping
+        if (!this.isSwiping) {
+          const currentTime = Date.now();
+          const tapLength = currentTime - this.lastTapTime;
+          
+          if (tapLength < 500 && tapLength > 0) {
+            // Double tap detected - drop object
+            if (this.heldObject && !this.inspectionMode) {
+              this.dropObject();
+            }
+          } else if (!this.heldObject) {
+            // Single tap - attempt pickup
+            const cursor = document.querySelector('#cursor');
+            const intersection = cursor.components.raycaster.intersections[0];
 
-          if (intersection && !this.heldObject) {
-            const clickedEl = intersection.object.el;
-            if (clickedEl.classList.contains('pickupable')) {
-              this.pickupObject(clickedEl);
+            if (intersection) {
+              const clickedEl = intersection.object.el;
+              if (clickedEl.classList.contains('pickupable')) {
+                this.pickupObject(clickedEl);
+              }
             }
           }
+          
+          this.lastTapTime = currentTime;
         }
         
-        this.lastTapTime = currentTime;
+        this.isSwiping = false;
       },
 
       toggleInspectionMode: function () {
@@ -594,17 +636,23 @@
             btn.addEventListener(eventType, (e) => {
               e.preventDefault();
               e.stopPropagation();
-              this.startMovement(direction);
-            });
+              this.moveState[direction] = true;
+            }, { capture: true });
           });
 
-          ['mouseup', 'mouseleave', 'touchend'].forEach(eventType => {
+          ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach(eventType => {
             btn.addEventListener(eventType, (e) => {
               e.preventDefault();
               e.stopPropagation();
-              this.stopMovement(direction);
-            });
+              this.moveState[direction] = false;
+            }, { capture: true });
           });
+
+          // Prevent any touch move events from propagating
+          btn.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }, { capture: true });
 
           arrowControls.appendChild(btn);
         });
@@ -654,14 +702,6 @@
         this.tick = this.tick.bind(this);
       },
 
-      startMovement: function(direction) {
-        this.moveState[direction] = true;
-      },
-
-      stopMovement: function(direction) {
-        this.moveState[direction] = false;
-      },
-
       tick: function() {
         if (!this.moveState) return;
         
@@ -689,6 +729,11 @@
         }
       }
     });
+
+    window.addEventListener('load', async () => {
+      await DeviceManager.init();
+      LookModeManager.init();
+    });
   </script>
 </head>
 <body>
@@ -712,7 +757,7 @@
              rotation="-90 0 0" 
              width="20" 
              height="20" 
-             color="white"
+             color="blue"
              physx-body="type: static">
     </a-plane>
     <a-box class="pickupable" position="0 0.5 -3" width="0.5" height="0.5" depth="0.5" color="orange" physx-body="type: dynamic; mass: 1"></a-box>
