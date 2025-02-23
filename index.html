@@ -31,7 +31,7 @@
     .look-mode-btn {
       position: fixed;
       left: 20px;
-      bottom: 20px;
+      top: 20px;
       width: 40px;
       height: 40px;
       background: rgba(255, 255, 255, 0.3);
@@ -54,7 +54,7 @@
 
     #exitButton {
       position: fixed;
-      bottom: 20px;
+      top: 20px;
       left: 70px;
       padding: 8px 16px;
       background-color: #ff4444;
@@ -478,11 +478,13 @@
         }
 
         if (this.isSwiping) {
-          const moveDeltaX = (touch.clientX - this.prevMouseX) * 0.005;
-          const moveDeltaY = (touch.clientY - this.prevMouseY) * 0.005;
+          // Normalize sensitivity for both axes
+          const sensitivity = 0.005;
+          const moveDeltaX = (touch.clientX - this.prevMouseX) * sensitivity;
+          const moveDeltaY = (touch.clientY - this.prevMouseY) * sensitivity;
 
           if (this.inspectionMode && this.heldObject) {
-            // Existing inspection mode rotation logic
+            // Inspection mode rotation logic remains unchanged
             const threshold = 0.001;
             const absX = Math.abs(moveDeltaX);
             const absY = Math.abs(moveDeltaY);
@@ -502,12 +504,15 @@
             }
             this.heldObject.object3D.updateMatrix();
           } else {
-            // Camera look controls when not in inspection mode
+            // Camera look controls with constrained vertical rotation
             const lookControls = this.camera.components['look-controls'];
             if (lookControls) {
-              lookControls.yawObject.rotation.y -= moveDeltaX;
-              lookControls.pitchObject.rotation.x -= moveDeltaY;
-              lookControls.pitchObject.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, lookControls.pitchObject.rotation.x));
+              // Reversed the direction by removing the negative sign
+              lookControls.yawObject.rotation.y += moveDeltaX;
+              
+              // Vertical rotation remains the same
+              const newPitch = lookControls.pitchObject.rotation.x + moveDeltaY;
+              lookControls.pitchObject.rotation.x = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, newPitch));
             }
           }
         }
