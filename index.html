@@ -766,8 +766,14 @@
     <assets>
     <img id="skybox1" crossorigin="anonymous" src="https://cdn.glitch.global/25235b68-f49a-41fa-be7d-0ccbdfb8b7f7/skybox1.png?v=1740244757385" alt="Skybox background texture">
     <img id="brickwall" crossorigin="anonymous" src="https://cdn.glitch.global/25235b68-f49a-41fa-be7d-0ccbdfb8b7f7/brick.jpg?v=1740244936837" alt="Brickwall texture">
+        <a-asset-item id="buddy" src="https://cdn.glitch.global/25235b68-f49a-41fa-be7d-0ccbdfb8b7f7/buddy2.glb?v=1740420154488" crossorigin="anonymous"></a-asset-item>
+      
     </assets>
+    
+    
+    
 
+    
 
     <a href="https://placeholder-exit-url.com" id="exitButton">EXIT</a>
     
@@ -776,7 +782,26 @@
         <a-entity id="cursor" position="0 0 -1" geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03" material="color: lime" raycaster="objects: .pickupable; far: 20"></a-entity>
       </a-camera>
     </a-entity>
-
+<a-sphere 
+  position="0 5 -3" 
+  radius="0.5" 
+  class="light-source"
+  material="
+    color: #ffff00; 
+    emissive: #ffff00; 
+    emissiveIntensity: 2; 
+    shader: standard"
+  light="type: point; 
+         color: #ffff00; 
+         intensity: 8; 
+         distance: 20; 
+         decay: 2"
+  physx-body="type: static"
+></a-sphere>
+    
+    
+    
+    
     <a-plane position="0 0 0" 
              rotation="-90 0 0" 
              width="20" 
@@ -788,6 +813,15 @@
     <a-box class="pickupable" position="0 0.5 -3" width="0.5" height="0.5" depth="0.5" color="orange" physx-body="type: dynamic; mass: 1"></a-box>
     <a-sphere class="pickupable" position="-2 0.5 -3" radius="0.25" color="Red" physx-body="type: dynamic; mass: 1"></a-sphere>
     <a-cylinder class="pickupable" position="2 0.5 -3" radius="0.25" height="0.5" color="green" physx-body="type: dynamic; mass: 1"></a-cylinder>
+    
+    <a-entity 
+      gltf-model="#buddy" 
+      position="3 0.5 -3" 
+      scale="2 2 2"
+      rotation="0 -45 0" 
+      class="pickupable" 
+      physx-body="type: dynamic; mass: 1"
+    ></a-entity>
 
     <a-entity light="type: ambient; intensity: 0.5"></a-entity>
     <a-entity light="type: directional; intensity: 0.5" position="-1 1 0"></a-entity>
