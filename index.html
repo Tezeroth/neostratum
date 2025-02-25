@@ -160,6 +160,40 @@
         display: none !important;
       }
     }
+
+    #loadingOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+
+    .loading-content {
+      text-align: center;
+    }
+
+    .loading-spinner {
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #3498db;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 
   <script>
@@ -372,15 +406,56 @@
         const position = el.object3D.position.clone();
         const quaternion = el.object3D.quaternion.clone();
         
-        // Remove and reapply physics to ensure clean state
+        // Find touching objects using PhysX overlap check
+        const physxSystem = this.el.sceneEl.systems.physx;
+        const touchingObjects = [];
+        
+        document.querySelectorAll('[physx-body]').forEach(obj => {
+          if (obj !== el && obj.components['physx-body']) {
+            const distance = obj.object3D.position.distanceTo(el.object3D.position);
+            // Increase detection radius for GLTF models
+            const touchThreshold = (obj.hasAttribute('gltf-model') || el.hasAttribute('gltf-model')) ? 2 : 1;
+            if (distance < touchThreshold) {
+              touchingObjects.push(obj);
+            }
+          }
+        });
+        
+        // Remove physics from touching objects temporarily
+        touchingObjects.forEach(obj => {
+          const originalPhysics = obj.getAttribute('physx-body');
+          obj.removeAttribute('physx-body');
+          
+          // Store position and rotation
+          const objPosition = obj.object3D.position.clone();
+          const objRotation = obj.object3D.rotation.clone();
+          
+          // Restore physics after delay
+          setTimeout(() => {
+            if (obj) { // Check if object still exists
+              obj.setAttribute('physx-body', originalPhysics);
+              // Ensure position is maintained
+              obj.object3D.position.copy(objPosition);
+              obj.object3D.rotation.copy(objRotation);
+              obj.object3D.updateMatrix();
+            }
+          }, 500); // 0.5 seconds
+        });
+        
+        // Remove physics from picked up object
         el.removeAttribute('physx-body');
+        
+        // Store the object's current transform
+        this._savedPosition = position;
+        this._savedQuaternion = quaternion;
+        
+        // Update position and reapply physics after a brief delay
         requestAnimationFrame(() => {
           el.setAttribute('physx-body', 'type: kinematic');
           el.object3D.position.copy(position);
           el.object3D.quaternion.copy(quaternion);
           el.object3D.updateMatrix();
           
-          // Start tick after physics is reapplied
           this.el.sceneEl.addEventListener('tick', this.tick.bind(this));
         });
       },
@@ -754,6 +829,87 @@
       }
     });
 
+    // Add this component to control initialization order
+    AFRAME.registerComponent('physics-init-controller', {
+      init: function() {
+        const el = this.el;
+        const physxSystem = el.sceneEl.systems.physx;
+        
+        // Wait for PhysX system ready
+        if (physxSystem && physxSystem.initialized) {
+          this.initPhysics();
+        } else {
+          el.sceneEl.addEventListener('physx-ready', this.initPhysics.bind(this));
+        }
+      },
+      
+      initPhysics: function() {
+        const physxObjects = document.querySelectorAll('[physx-body]');
+        physxObjects.forEach(obj => {
+          // Ensure correct positioning
+          const position = obj.getAttribute('position');
+          if (position) {
+            obj.components['physx-body'].updatePosition();
+          }
+        });
+      }
+    });
+
+    AFRAME.registerComponent('scene-loading-check', {
+      init: function() {
+        const scene = this.el;
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        
+        // Hide scene initially
+        scene.setAttribute('visible', false);
+
+        // Track PhysX initialization state
+        let physxReady = false;
+        let objectsSettled = false;
+        let startTime;
+
+        // Listen for PhysX initialization
+        scene.addEventListener('physx-ready', () => {
+          console.log('PhysX World Ready');
+          physxReady = true;
+          startTime = performance.now();
+          
+          // Wait for objects to settle
+          const checkObjectsSettled = () => {
+            const currentTime = performance.now();
+            const elapsedTime = currentTime - startTime;
+            
+            if (elapsedTime > 500) { // Wait 500ms for objects to settle
+              objectsSettled = true;
+              loadingOverlay.style.display = 'none';
+              scene.setAttribute('visible', true);
+              return;
+            }
+            requestAnimationFrame(checkObjectsSettled);
+          };
+          checkObjectsSettled();
+        });
+
+        // Monitor console for PhysX initialization
+        const originalLog = console.log;
+        console.log = function() {
+          if (arguments[0] === 'Starting PhysX scene') {
+            startTime = performance.now();
+          }
+          originalLog.apply(console, arguments);
+        };
+
+        // Fallback timeout (3 seconds)
+        setTimeout(() => {
+          if (loadingOverlay.style.display !== 'none') {
+            console.warn('Loading timeout - forcing display');
+            loadingOverlay.style.display = 'none';
+            scene.setAttribute('visible', true);
+          }
+        }, 3000);
+      }
+    });
+
     window.addEventListener('load', async () => {
       await DeviceManager.init();
       LookModeManager.init();
@@ -761,19 +917,27 @@
   </script>
 </head>
 <body>
-  <a-scene desktop-and-mobile-controls arrow-controls physx="autoLoad: true; useDefaultScene: false;">
+  <div id="loadingOverlay">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <h2>Loading Physics Engine...</h2>
+    </div>
+  </div>
+
+  <a-scene 
+    scene-loading-check
+    desktop-and-mobile-controls
+    arrow-controls
+    physx="autoLoad: true; useDefaultScene: false;"
+    physics-world-config="gravity: 0 -9.8 0;"
+    visible="false">
 
     <assets>
     <img id="skybox1" crossorigin="anonymous" src="https://cdn.glitch.global/25235b68-f49a-41fa-be7d-0ccbdfb8b7f7/skybox1.png?v=1740244757385" alt="Skybox background texture">
     <img id="brickwall" crossorigin="anonymous" src="https://cdn.glitch.global/25235b68-f49a-41fa-be7d-0ccbdfb8b7f7/brick.jpg?v=1740244936837" alt="Brickwall texture">
-        <a-asset-item id="buddy" src="https://cdn.glitch.global/25235b68-f49a-41fa-be7d-0ccbdfb8b7f7/buddy2.glb?v=1740420154488" crossorigin="anonymous"></a-asset-item>
-      
+    <a-asset-item id="buddy" src="https://cdn.glitch.global/25235b68-f49a-41fa-be7d-0ccbdfb8b7f7/buddy2.glb?v=1740420154488" crossorigin="anonymous"></a-asset-item>
     </assets>
-    
-    
-    
 
-    
 
     <a href="https://placeholder-exit-url.com" id="exitButton">EXIT</a>
     
@@ -783,23 +947,24 @@
       </a-camera>
     </a-entity>
 
-    
-  
-    
-    
-    <a-plane position="0 0 0" 
-             rotation="-90 0 0" 
-             width="20" 
-             height="20" 
-             src="#brickwall"
-             repeat="4 4"
-             physx-body="type: static; shape: plane; "
-             >
-    </a-plane>
-    <a-box class="pickupable" position="0 2 -3" width="0.5" height="0.5" depth="0.5" color="orange" physx-body="type: dynamic; mass: 1"></a-box>
-    <a-sphere class="pickupable" position="-2 2 -3" radius="0.25" color="Red" physx-body="type: dynamic; mass: 1"></a-sphere>
-    <a-cylinder class="pickupable" position="2 2 -3" radius="0.25" height="0.5" color="green" physx-body="type: dynamic; mass: 1"></a-cylinder>
-    
+
+<!--Physx Collision Plane HAS to be a box.-->
+    <a-box 
+    position="0 0 0" 
+    rotation="0 0 0"
+    width="20"
+    height="0.001"
+    depth="20"
+    src="#brickwall"
+    repeat="4 4"
+    physx-body="type: static; mass: 0;">
+  </a-box>
+
+
+    <a-box class="pickupable" position="0 0.25 -3" width="1" height="1" depth="1" color="orange" physx-body="type: dynamic; mass: 1"></a-box>
+    <a-sphere class="pickupable" position="-2 0.5 -3" radius="0.25" color="Red" physx-body="type: dynamic; mass: 1"></a-sphere>
+    <a-cylinder class="pickupable" position="2 0.5 -3" radius="0.25" height="0.5" color="green" physx-body="type: dynamic; mass: 1"></a-cylinder>
+
     <a-entity 
       gltf-model="#buddy" 
       position="3 2 -3" 
