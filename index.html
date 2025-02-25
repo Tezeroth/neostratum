@@ -863,43 +863,20 @@
         // Hide scene initially
         scene.setAttribute('visible', false);
 
-        // Track PhysX initialization state
-        let physxReady = false;
-        let objectsSettled = false;
-        let startTime;
-
         // Listen for PhysX initialization
-        scene.addEventListener('physx-ready', () => {
-          console.log('PhysX World Ready');
-          physxReady = true;
-          startTime = performance.now();
-          
-          // Wait for objects to settle
-          const checkObjectsSettled = () => {
-            const currentTime = performance.now();
-            const elapsedTime = currentTime - startTime;
-            
-            if (elapsedTime > 500) { // Wait 500ms for objects to settle
-              objectsSettled = true;
-              loadingOverlay.style.display = 'none';
-              scene.setAttribute('visible', true);
-              return;
-            }
-            requestAnimationFrame(checkObjectsSettled);
-          };
-          checkObjectsSettled();
-        });
-
-        // Monitor console for PhysX initialization
         const originalLog = console.log;
         console.log = function() {
           if (arguments[0] === 'Starting PhysX scene') {
-            startTime = performance.now();
+            // Wait a bit after PhysX starts to ensure everything is ready
+            setTimeout(() => {
+              loadingOverlay.style.display = 'none';
+              scene.setAttribute('visible', true);
+            }, 1000); // Give PhysX time to initialize and objects to settle
           }
           originalLog.apply(console, arguments);
         };
 
-        // Fallback timeout (3 seconds)
+        // Minimal fallback timeout (3 seconds)
         setTimeout(() => {
           if (loadingOverlay.style.display !== 'none') {
             console.warn('Loading timeout - forcing display');
