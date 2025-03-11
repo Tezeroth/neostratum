@@ -5,7 +5,7 @@
   <title>PhysX Pickup & Inspection Mode with Mobile Support</title>
   
   <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/c-frame/physx@v0.1.2/dist/physx.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/c-frame/physx@v0.1.3/dist/physx.min.js"></script>
 
   <style>
     .permission-overlay {
@@ -906,7 +906,7 @@
     scene-loading-check
     desktop-and-mobile-controls
     arrow-controls
-    physx="autoLoad: true; useDefaultScene: false;"
+      physx="autoLoad: true; delay: 1000; wasmUrl: https://cdn.jsdelivr.net/gh/c-frame/physx@v0.1.3/wasm/physx.release.wasm; useDefaultScene: false; stepRate: 90;"
     physics-world-config="gravity: 0 -9.8 0;"
     visible="false">
 
