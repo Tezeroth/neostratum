@@ -5,7 +5,7 @@
   <title>PhysX Pickup & Inspection Mode with Mobile Support</title>
   
   <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/c-frame/physx@v0.1.3/dist/physx.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/c-frame/physx@v0.1.2/dist/physx.min.js"></script>
 
   <style>
     .permission-overlay {
@@ -270,11 +270,11 @@
         document.body.appendChild(button);
       },
 
- updateButtonText(button) {
-  button.innerHTML = this.currentMode === 'swipe' ? '⇄' : '⟲';
-  button.title = `${this.currentMode.toUpperCase()} MODE${DeviceManager.hasGyro ? ' (tap to switch)' : ''}`; // <-- backticks added
-  button.disabled = !DeviceManager.hasGyro;
-},
+      updateButtonText(button) {
+        button.innerHTML = this.currentMode === 'swipe' ? '⇄' : '⟲';
+        button.title = `${this.currentMode.toUpperCase()} MODE${DeviceManager.hasGyro ? ' (tap to switch)' : ''}`;
+        button.disabled = !DeviceManager.hasGyro;
+      },
 
       setMode(mode) {
         this.currentMode = mode;
@@ -291,13 +291,13 @@
       showPermissionDenied() {
         const overlay = document.createElement('div');
         overlay.className = 'permission-overlay';
-        overlay.innerHTML = 
+        overlay.innerHTML = `
           <div class="permission-content">
             <h2>Gyroscope Permission Required</h2>
             <p>Please enable device orientation access to use gyroscope controls.</p>
             <button>OK</button>
           </div>
-        ;
+        `;
         
         overlay.querySelector('button').onclick = () => {
           overlay.remove();
@@ -728,7 +728,7 @@
         Object.entries(buttons).forEach(([direction, symbol]) => {
           const btn = document.createElement('button');
           btn.className = 'arrow-btn';
-          btn.id = ${direction}Btn;
+          btn.id = `${direction}Btn`;
           btn.innerHTML = symbol;
           
           ['mousedown', 'touchstart'].forEach(eventType => {
@@ -759,7 +759,7 @@
         Object.entries(actionButtons).forEach(([action, label]) => {
           const btn = document.createElement('button');
           btn.className = 'action-btn';
-          btn.id = ${action}Btn;
+          btn.id = `${action}Btn`;
           btn.innerHTML = label;
           
           ['click', 'touchend'].forEach(eventType => {
@@ -903,10 +903,11 @@
 
   <a-scene 
     highRefreshRate="true"     
+    stats
     scene-loading-check
     desktop-and-mobile-controls
     arrow-controls
-      physx="autoLoad: true; delay: 1000; wasmUrl: https://cdn.jsdelivr.net/gh/c-frame/physx@v0.1.3/wasm/physx.release.wasm; useDefaultScene: false; stepRate: 90;"
+    physx="autoLoad: true; useDefaultScene: false;"
     physics-world-config="gravity: 0 -9.8 0;"
     visible="false">
 
