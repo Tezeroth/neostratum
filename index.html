@@ -270,11 +270,11 @@
         document.body.appendChild(button);
       },
 
-      updateButtonText(button) {
-        button.innerHTML = this.currentMode === 'swipe' ? '⇄' : '⟲';
-        button.title = ${this.currentMode.toUpperCase()} MODE${DeviceManager.hasGyro ? ' (tap to switch)' : ''};
-        button.disabled = !DeviceManager.hasGyro;
-      },
+ updateButtonText(button) {
+  button.innerHTML = this.currentMode === 'swipe' ? '⇄' : '⟲';
+  button.title = `${this.currentMode.toUpperCase()} MODE${DeviceManager.hasGyro ? ' (tap to switch)' : ''}`; // <-- backticks added
+  button.disabled = !DeviceManager.hasGyro;
+},
 
       setMode(mode) {
         this.currentMode = mode;
