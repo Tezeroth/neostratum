@@ -272,7 +272,7 @@
 
       updateButtonText(button) {
         button.innerHTML = this.currentMode === 'swipe' ? '⇄' : '⟲';
-        button.title = `${this.currentMode.toUpperCase()} MODE${DeviceManager.hasGyro ? ' (tap to switch)' : ''}`;
+        button.title = ${this.currentMode.toUpperCase()} MODE${DeviceManager.hasGyro ? ' (tap to switch)' : ''};
         button.disabled = !DeviceManager.hasGyro;
       },
 
@@ -291,13 +291,13 @@
       showPermissionDenied() {
         const overlay = document.createElement('div');
         overlay.className = 'permission-overlay';
-        overlay.innerHTML = `
+        overlay.innerHTML = 
           <div class="permission-content">
             <h2>Gyroscope Permission Required</h2>
             <p>Please enable device orientation access to use gyroscope controls.</p>
             <button>OK</button>
           </div>
-        `;
+        ;
         
         overlay.querySelector('button').onclick = () => {
           overlay.remove();
@@ -728,7 +728,7 @@
         Object.entries(buttons).forEach(([direction, symbol]) => {
           const btn = document.createElement('button');
           btn.className = 'arrow-btn';
-          btn.id = `${direction}Btn`;
+          btn.id = ${direction}Btn;
           btn.innerHTML = symbol;
           
           ['mousedown', 'touchstart'].forEach(eventType => {
@@ -759,7 +759,7 @@
         Object.entries(actionButtons).forEach(([action, label]) => {
           const btn = document.createElement('button');
           btn.className = 'action-btn';
-          btn.id = `${action}Btn`;
+          btn.id = ${action}Btn;
           btn.innerHTML = label;
           
           ['click', 'touchend'].forEach(eventType => {
