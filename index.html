@@ -519,10 +519,13 @@
         
         // Reapply original physics state
         if (previousHeldObject && this._originalPhysicsState) {
-          previousHeldObject.setAttribute('physx-body', this._originalPhysicsState);
-          previousHeldObject.object3D.position.copy(position);
-          previousHeldObject.object3D.quaternion.copy(quaternion);
-          previousHeldObject.object3D.updateMatrix();
+          previousHeldObject.removeAttribute('physx-body');
+          requestAnimationFrame(() => {
+            previousHeldObject.setAttribute('physx-body', this._originalPhysicsState);
+            previousHeldObject.object3D.position.copy(position);
+            previousHeldObject.object3D.quaternion.copy(quaternion);
+            previousHeldObject.object3D.updateMatrix();
+          });
         }
       },
 
@@ -712,20 +715,22 @@
           });
           this.camera.setAttribute('wasd-controls', 'enabled', true);
 
-          // Reapply kinematic physics and position
+          // First remove any existing physics
           el.removeAttribute('physx-body');
+          
+          // Then reapply physics in the next frame
           requestAnimationFrame(() => {
+            // Apply kinematic physics to allow movement while held
             el.setAttribute('physx-body', {
-              type: 'kinematic', 
+              type: 'kinematic',
               mass: 1,
-              friction: 0.5,
               restitution: 0.3,
-              contactOffset: 0.01,
+              friction: 0.5,
               linearDamping: 0.1,
               angularDamping: 0.1
             });
-            el.object3D.position.copy(this._savedPosition);
-            el.object3D.quaternion.copy(this._savedQuaternion);
+            
+            // Ensure object maintains its current position
             el.object3D.updateMatrix();
             
             // Restore tick function for position updates
