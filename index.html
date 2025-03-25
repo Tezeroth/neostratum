@@ -197,6 +197,31 @@
   </style>
 
   <script>
+    // Register PhysX component
+    AFRAME.registerComponent('physx', {
+      init: function() {
+        this.el.sceneEl.systems.physx = this;
+        this.initialized = false;
+        this.initPhysX();
+      },
+
+      initPhysX: function() {
+        const config = this.el.getAttribute('physx');
+        if (!config) return;
+
+        // Initialize PhysX with proper configuration
+        this.el.sceneEl.setAttribute('physics-world-config', {
+          maxSubSteps: 4,
+          fixedTimeStep: 1/60,
+          gravity: {x: 0, y: -9.81, z: 0},
+          debug: false
+        });
+
+        this.initialized = true;
+        this.el.sceneEl.emit('physx-ready');
+      }
+    });
+
     // Device Manager: Handles device detection, permissions, and capabilities
     const DeviceManager = {
       isVR: false,
@@ -364,12 +389,38 @@
       },
 
       remove: function () {
+        // Clean up all event listeners
         window.removeEventListener('click', this.onClick);
-        window.removeEventListener('touchend', this.onClick);
+        window.removeEventListener('touchend', this.onTouchEnd);
         window.removeEventListener('keydown', this.onKeyPress);
         window.removeEventListener('mousemove', this.onMouseMove);
         window.removeEventListener('touchmove', this.onTouchMove);
         window.removeEventListener('touchstart', this.onTouchStart);
+        
+        // Clean up any lingering tick listeners
+        if (this._tickFunction) {
+          this.el.sceneEl.removeEventListener('tick', this._tickFunction);
+          this._tickFunction = null;
+        }
+        
+        // Clear any active timeouts
+        if (this._restoreTimeout) {
+          clearTimeout(this._restoreTimeout);
+          this._restoreTimeout = null;
+        }
+        
+        if (this._dropTimeout) {
+          clearTimeout(this._dropTimeout);
+          this._dropTimeout = null;
+        }
+        
+        // Restore any touched objects
+        this.restoreTouchedObjects();
+        
+        // Drop any held object
+        if (this.heldObject) {
+          this.dropObject();
+        }
       },
 
       onClick: function (evt) {
@@ -406,58 +457,47 @@
         const position = el.object3D.position.clone();
         const quaternion = el.object3D.quaternion.clone();
         
-        // Find touching objects using PhysX overlap check
-        const physxSystem = this.el.sceneEl.systems.physx;
-        const touchingObjects = [];
+        // Store original physics state
+        this._originalPhysicsState = el.getAttribute('physx-body');
         
-        document.querySelectorAll('[physx-body]').forEach(obj => {
-          if (obj !== el && obj.components['physx-body']) {
-            const distance = obj.object3D.position.distanceTo(el.object3D.position);
-            // Increase detection radius for GLTF models
-            const touchThreshold = (obj.hasAttribute('gltf-model') || el.hasAttribute('gltf-model')) ? 2 : 1;
-            if (distance < touchThreshold) {
-              touchingObjects.push(obj);
-            }
-          }
-        });
-        
-        // Remove physics from touching objects temporarily
-        touchingObjects.forEach(obj => {
-          const originalPhysics = obj.getAttribute('physx-body');
-          obj.removeAttribute('physx-body');
-          
-          // Store position and rotation
-          const objPosition = obj.object3D.position.clone();
-          const objRotation = obj.object3D.rotation.clone();
-          
-          // Restore physics after delay
-          setTimeout(() => {
-            if (obj) { // Check if object still exists
-              obj.setAttribute('physx-body', originalPhysics);
-              // Ensure position is maintained
-              obj.object3D.position.copy(objPosition);
-              obj.object3D.rotation.copy(objRotation);
-              obj.object3D.updateMatrix();
-            }
-          }, 500); // 0.5 seconds
-        });
-        
-        // Remove physics from picked up object
+        // Completely remove physics from picked up object
         el.removeAttribute('physx-body');
         
         // Store the object's current transform
         this._savedPosition = position;
         this._savedQuaternion = quaternion;
         
-        // Update position and reapply physics after a brief delay
-        requestAnimationFrame(() => {
-          el.setAttribute('physx-body', 'type: kinematic');
-          el.object3D.position.copy(position);
-          el.object3D.quaternion.copy(quaternion);
-          el.object3D.updateMatrix();
-          
-          this.el.sceneEl.addEventListener('tick', this.tick.bind(this));
+        // Create a new tick function each time to avoid memory leaks
+        this._tickFunction = this.tick.bind(this);
+        this.el.sceneEl.addEventListener('tick', this._tickFunction);
+      },
+      
+      restoreTouchedObjects: function() {
+        if (!this._touchedObjects) return;
+        
+        this._touchedObjects.forEach(objState => {
+          if (!objState.restored && objState.el) {
+            const obj = objState.el;
+            
+            // Don't restore if we're still holding something
+            if (this.heldObject === obj) return;
+            
+            obj.removeAttribute('physx-body');
+            
+            requestAnimationFrame(() => {
+              if (obj && objState.physicsState) {
+                obj.setAttribute('physx-body', objState.physicsState);
+                obj.object3D.position.copy(objState.position);
+                obj.object3D.rotation.copy(objState.rotation);
+                obj.object3D.updateMatrix();
+                objState.restored = true;
+              }
+            });
+          }
         });
+        
+        // Clear reference to avoid memory leaks
+        this._touchedObjects = null;
       },
 
       dropObject: function () {
@@ -467,36 +507,23 @@
         const position = el.object3D.position.clone();
         const quaternion = el.object3D.quaternion.clone();
         
-        // Ensure we're out of inspection mode
-        this.inspectionMode = false;
-        
-        // Update cursor color back to normal
-        if (this.cursor) {
-          this.cursor.setAttribute('material', 'color', 'lime');
+        // Clear references first
+        if (this._tickFunction) {
+          this.el.sceneEl.removeEventListener('tick', this._tickFunction);
+          this._tickFunction = null;
         }
         
-        // Re-enable controls explicitly
-        this.camera.setAttribute('look-controls', {
-          enabled: true,
-          pointerLockEnabled: !DeviceManager.isMobile
-        });
-        this.camera.setAttribute('wasd-controls', 'enabled', true);
-        
-        // Clear references first
-        this.el.sceneEl.removeEventListener('tick', this.tick.bind(this));
+        // Store reference to current held object and clear it
+        const previousHeldObject = this.heldObject;
         this.heldObject = null;
-
-        // Remove and reapply physics to ensure clean state
-        el.removeAttribute('physx-body');
-        requestAnimationFrame(() => {
-          el.setAttribute('physx-body', {
-            type: 'dynamic',
-            mass: 1
-          });
-          el.object3D.position.copy(position);
-          el.object3D.quaternion.copy(quaternion);
-          el.object3D.updateMatrix();
-        });
+        
+        // Reapply original physics state
+        if (previousHeldObject && this._originalPhysicsState) {
+          previousHeldObject.setAttribute('physx-body', this._originalPhysicsState);
+          previousHeldObject.object3D.position.copy(position);
+          previousHeldObject.object3D.quaternion.copy(quaternion);
+          previousHeldObject.object3D.updateMatrix();
+        }
       },
 
       tick: function () {
@@ -656,6 +683,12 @@
           // Disable physics during inspection
           el.removeAttribute('physx-body');
           
+          // Remove tick listener to avoid position updates
+          if (this._tickFunction) {
+            this.el.sceneEl.removeEventListener('tick', this._tickFunction);
+            this._tickFunction = null;
+          }
+          
           // Disable controls
           this.camera.setAttribute('look-controls', 'enabled', false);
           this.camera.setAttribute('wasd-controls', 'enabled', false);
@@ -679,12 +712,25 @@
           });
           this.camera.setAttribute('wasd-controls', 'enabled', true);
 
-          // Restore physics and position
+          // Reapply kinematic physics and position
+          el.removeAttribute('physx-body');
           requestAnimationFrame(() => {
-            el.setAttribute('physx-body', 'type: kinematic');
+            el.setAttribute('physx-body', {
+              type: 'kinematic', 
+              mass: 1,
+              friction: 0.5,
+              restitution: 0.3,
+              contactOffset: 0.01,
+              linearDamping: 0.1,
+              angularDamping: 0.1
+            });
             el.object3D.position.copy(this._savedPosition);
             el.object3D.quaternion.copy(this._savedQuaternion);
             el.object3D.updateMatrix();
+            
+            // Restore tick function for position updates
+            this._tickFunction = this.tick.bind(this);
+            this.el.sceneEl.addEventListener('tick', this._tickFunction);
           });
         }
       },
@@ -829,32 +875,7 @@
       }
     });
 
-    // Add this component to control initialization order
-    AFRAME.registerComponent('physics-init-controller', {
-      init: function() {
-        const el = this.el;
-        const physxSystem = el.sceneEl.systems.physx;
-        
-        // Wait for PhysX system ready
-        if (physxSystem && physxSystem.initialized) {
-          this.initPhysics();
-        } else {
-          el.sceneEl.addEventListener('physx-ready', this.initPhysics.bind(this));
-        }
-      },
-      
-      initPhysics: function() {
-        const physxObjects = document.querySelectorAll('[physx-body]');
-        physxObjects.forEach(obj => {
-          // Ensure correct positioning
-          const position = obj.getAttribute('position');
-          if (position) {
-            obj.components['physx-body'].updatePosition();
-          }
-        });
-      }
-    });
-
+    // Update the scene-loading-check component
     AFRAME.registerComponent('scene-loading-check', {
       init: function() {
         const scene = this.el;
@@ -863,27 +884,20 @@
         // Hide scene initially
         scene.setAttribute('visible', false);
 
-        // Listen for PhysX initialization
-        const originalLog = console.log;
-        console.log = function() {
-          if (arguments[0] === 'Starting PhysX scene') {
-            // Wait a bit after PhysX starts to ensure everything is ready
-            setTimeout(() => {
-              loadingOverlay.style.display = 'none';
-              scene.setAttribute('visible', true);
-            }, 1000); // Give PhysX time to initialize and objects to settle
-          }
-          originalLog.apply(console, arguments);
-        };
-
-        // Minimal fallback timeout (3 seconds)
+        // Simple timeout to show scene
         setTimeout(() => {
-          if (loadingOverlay.style.display !== 'none') {
-            console.warn('Loading timeout - forcing display');
-            loadingOverlay.style.display = 'none';
-            scene.setAttribute('visible', true);
-          }
-        }, 3000);
+          loadingOverlay.style.display = 'none';
+          scene.setAttribute('visible', true);
+        }, 2000);
+      }
+    });
+
+    // Simplify the fixed-floor component
+    AFRAME.registerComponent('fixed-floor', {
+      tick: function() {
+        // Simple but effective approach - just keep resetting position every frame
+        this.el.object3D.position.set(0, 0, 0);
+        this.el.object3D.rotation.set(0, 0, 0);
       }
     });
 
@@ -906,8 +920,16 @@
     scene-loading-check
     desktop-and-mobile-controls
     arrow-controls
-      physx="autoLoad: true; delay: 1000; wasmUrl: https://cdn.jsdelivr.net/gh/c-frame/physx@v0.1.3/wasm/physx.release.wasm; useDefaultScene: false; stepRate: 90;"
-    physics-world-config="gravity: 0 -9.8 0;"
+    physx="autoLoad: true; delay: 1000; wasmUrl: https://cdn.jsdelivr.net/gh/c-frame/physx@v0.1.3/wasm/physx.release.wasm;"
+    physics-world-config="gravity: 0 -9.8 0; maxSubSteps: 4; fixedTimeStep: 1/60;"
+    renderer="antialias: true;"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false"
+    xrweb="optionalFeatures: hand-tracking, layers"
+    xrextras-almost-there
+    xrextras-loading
+    xrextras-runtime-error
+    xrextras-tap-recenter
     visible="false">
 
     <assets>
@@ -925,32 +947,56 @@
       </a-camera>
     </a-entity>
 
-
-<!--Physx Collision Plane HAS to be a box.-->
+    <!-- Floor box with fixed position -->
     <a-box 
-    position="0 0 0" 
-    rotation="0 0 0"
-    width="20"
-    height="0.001"
-    depth="20"
-    src="#brickwall"
-    repeat="4 4"
-    physx-body="type: static; mass: 0;">
-  </a-box>
+      id="ground-plane"
+      position="0 0 0" 
+      rotation="0 0 0"
+      width="30" 
+      height="1" 
+      depth="30"
+      src="#brickwall"
+      repeat="10 10"
+      fixed-floor
+      physx-body="type: static; mass: 0; shape: box; restitution: 0; friction: 1;">
+    </a-box>
 
-
-    <a-box class="pickupable" position="0 0.25 -3" width="1" height="1" depth="1" color="orange" physx-body="type: dynamic; mass: 1"></a-box>
-    <a-sphere class="pickupable" position="-2 0.5 -3" radius="0.25" color="Red" physx-body="type: dynamic; mass: 1"></a-sphere>
-    <a-cylinder class="pickupable" position="2 0.5 -3" radius="0.25" height="0.5" color="green" physx-body="type: dynamic; mass: 1"></a-cylinder>
+    <!-- Dynamic objects with proper initial position above the floor -->
+    <a-box 
+      class="pickupable" 
+      position="0 1.5 -3" 
+      width="1" 
+      height="1" 
+      depth="1" 
+      color="orange" 
+      physx-body="type: dynamic; mass: 1; restitution: 0.3; friction: 0.5; linearDamping: 0.5; angularDamping: 0.5;">
+    </a-box>
+    
+    <a-sphere 
+      class="pickupable" 
+      position="-2 1.5 -3" 
+      radius="0.25" 
+      color="Red" 
+      physx-body="type: dynamic; mass: 1; restitution: 0.3; friction: 0.5; linearDamping: 0.5; angularDamping: 0.5;">
+    </a-sphere>
+    
+    <a-cylinder 
+      class="pickupable" 
+      position="2 1.5 -3" 
+      radius="0.25" 
+      height="0.5" 
+      color="green" 
+      physx-body="type: dynamic; mass: 1; restitution: 0.3; friction: 0.5; linearDamping: 0.5; angularDamping: 0.5;">
+    </a-cylinder>
 
     <a-entity 
       gltf-model="#buddy" 
-      position="3 2 -3" 
+      position="3 2.5 -3" 
       scale="2 2 2"
       rotation="0 -45 0" 
       class="pickupable" 
-      physx-body="type: dynamic; mass: 1"
-    ></a-entity>
+      physx-body="type: dynamic; mass: 1; shape: box; width: 2; height: 2; depth: 2; restitution: 0.3; friction: 0.5; linearDamping: 0.5; angularDamping: 0.5;">
+    </a-entity>
 
     <a-entity light="type: ambient; intensity: 0.5"></a-entity>
     <a-entity light="type: directional; intensity: 0.5" position="-1 1 0"></a-entity>
