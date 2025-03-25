@@ -830,7 +830,10 @@
                   const clickedEl = intersection.object.el;
                   if (clickedEl.classList.contains('pickupable')) {
                     if (controls.heldObject) {
-                      controls.dropObject();
+                      // Only allow dropping if not in inspection mode
+                      if (!controls.inspectionMode) {
+                        controls.dropObject();
+                      }
                     } else {
                       controls.pickupObject(clickedEl);
                     }
