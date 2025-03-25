@@ -460,12 +460,30 @@
         // Store original physics state
         this._originalPhysicsState = el.getAttribute('physx-body');
         
-        // Completely remove physics from picked up object
+        // Completely remove physics from picked up object initially
         el.removeAttribute('physx-body');
         
         // Store the object's current transform
         this._savedPosition = position;
         this._savedQuaternion = quaternion;
+        
+        // Set up physics application after 2 seconds
+        this._physicsTimeout = setTimeout(() => {
+          if (this.heldObject === el && !this.inspectionMode) {
+            // Apply kinematic physics to allow movement while held
+            el.setAttribute('physx-body', {
+              type: 'kinematic',
+              mass: 1,
+              restitution: 0.3,
+              friction: 0.5,
+              linearDamping: 0.1,
+              angularDamping: 0.1
+            });
+            
+            // Ensure object maintains its current position
+            el.object3D.updateMatrix();
+          }
+        }, 2000);
         
         // Create a new tick function each time to avoid memory leaks
         this._tickFunction = this.tick.bind(this);
@@ -502,6 +520,12 @@
 
       dropObject: function () {
         if (!this.heldObject) return;
+
+        // Clear the physics timeout if it exists
+        if (this._physicsTimeout) {
+          clearTimeout(this._physicsTimeout);
+          this._physicsTimeout = null;
+        }
 
         const el = this.heldObject;
         const position = el.object3D.position.clone();
@@ -668,6 +692,12 @@
 
       toggleInspectionMode: function () {
         if (!this.heldObject) return;
+        
+        // Clear the physics timeout if it exists
+        if (this._physicsTimeout) {
+          clearTimeout(this._physicsTimeout);
+          this._physicsTimeout = null;
+        }
         
         this.inspectionMode = !this.inspectionMode;
         
