@@ -731,15 +731,6 @@ AFRAME.registerComponent('scene-loading-check', {
   }
 });
 
-// Simplify the fixed-floor component
-AFRAME.registerComponent('fixed-floor', {
-  tick: function() {
-    // Simple but effective approach - just keep resetting position every frame
-    this.el.object3D.position.set(0, 0, 0);
-    this.el.object3D.rotation.set(0, 0, 0);
-  }
-});
-
 window.addEventListener('load', async () => {
   await DeviceManager.init();
   LookModeManager.init();
