@@ -216,7 +216,7 @@ AFRAME.registerComponent('desktop-and-mobile-controls', {
     }
     
     // Restore any touched objects
-    this.restoreTouchedObjects();
+    // this.restoreTouchedObjects();
     
     // Drop any held object
     if (this.heldObject) {
@@ -291,34 +291,6 @@ AFRAME.registerComponent('desktop-and-mobile-controls', {
     this.el.sceneEl.addEventListener('tick', this._tickFunction);
   },
   
-  restoreTouchedObjects: function() {
-    if (!this._touchedObjects) return;
-    
-    this._touchedObjects.forEach(objState => {
-      if (!objState.restored && objState.el) {
-        const obj = objState.el;
-        
-        // Don't restore if we're still holding something
-        if (this.heldObject === obj) return;
-        
-        obj.removeAttribute('physx-body');
-        
-        requestAnimationFrame(() => {
-          if (obj && objState.physicsState) {
-            obj.setAttribute('physx-body', objState.physicsState);
-            obj.object3D.position.copy(objState.position);
-            obj.object3D.rotation.copy(objState.rotation);
-            obj.object3D.updateMatrix();
-            objState.restored = true;
-          }
-        });
-      }
-    });
-    
-    // Clear reference to avoid memory leaks
-    this._touchedObjects = null;
-  },
-
   dropObject: function () {
     if (!this.heldObject) return;
 
